@@ -1,8 +1,8 @@
 @proto = http
-@hostname = myserver 
-@user = username
-@pwd = password
-@port = 8080 
+@hostname = 141.19.44.65 
+@user = ditto
+@pwd = ditto
+@port = 38080 
 
 ### CREATE A POLICY 
 PUT {{proto}}://{{user}}:{{pwd}}@{{hostname}}:{{port}}/api/2/policies/test:policy 
