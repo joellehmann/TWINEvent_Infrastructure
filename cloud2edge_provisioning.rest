@@ -1,7 +1,7 @@
 @proto = http
 @hostname = 141.19.44.65 
 @user = ditto
-@honodevice = demo-device
+@honodevice = testdevice
 @honotenant = org.eclipse.packages.c2e
 @honodevicepwd = demo-secret
 @pwd = ditto
@@ -22,21 +22,21 @@
 ### CREATE A NEW TENANT "joel" #########################################################
 ########################################################################################
 
-POST {{proto}}://{{hostname}}:{{devregport}}/v1/tenants/test
+POST {{proto}}://{{hostname}}:{{devregport}}/v1/tenants/{{honotenant}}
 
 ### CURL ###############################################################################
 
-curl -i -X POST {{proto}}://{{hostname}}:{{devregport}}/v1/tenants/joel
+curl -i -X POST {{proto}}://{{hostname}}:{{devregport}}/v1/tenants/{{honotenant}}
 
 ########################################################################################
 ### REGISTER A NEW DEVICE "org.fournier:aircraft" TO TENANT "joel" #####################
 ########################################################################################
 
-POST {{proto}}://{{hostname}}:{{devregport}}/v1/devices/test/testdevice
+POST {{proto}}://{{hostname}}:{{devregport}}/v1/devices/{{honotenant}}/{{honodevice}}
 
 ### CURL ###############################################################################
 
-curl -i -X POST {{proto}}://{{hostname}}:{{devregport}}/v1/devices/joel/org.fournier:aircraft
+curl -i -X POST {{proto}}://{{hostname}}:{{devregport}}/v1/devices/{{honotenant}}/{{honodevice}}
 
 ########################################################################################
 ### SET DEVICE "org.fournier:aircraft" CREDENTIALS #####################################
@@ -44,16 +44,15 @@ curl -i -X POST {{proto}}://{{hostname}}:{{devregport}}/v1/devices/joel/org.four
 ### CAUTION AUTHENTIFICATION: MQTT USER = my-auth-id-1@joel ############################
 ########################################################################################
 
-
-PUT {{proto}}://{{hostname}}:{{devregport}}/v1/credentials/test/testdevice
+PUT {{proto}}://{{hostname}}:{{devregport}}/v1/credentials/{{honotenant}}/{{honodevice}}
 Content-Type: application/json
 
 [
 {
   "type": "hashed-password",
-  "auth-id": "testdevice",
+  "auth-id": "{{honodevice}}",
   "secrets": [{
-    "pwd-plain": "test"
+    "pwd-plain": "{{honodevicepwd}}"
   }]
 }]
 
@@ -62,11 +61,11 @@ Content-Type: application/json
 curl -i -X PUT -H "Content-Type: application/json" --data '[
 {
   "type": "hashed-password",
-  "auth-id": "my-auth-id-1",
+  "auth-id": "{{honodevice}}",
   "secrets": [{
-    "pwd-plain": "flugzeug"
+    "pwd-plain": "{{honodevicepwd}}"
   }]
-}]' {{proto}}://{{hostname}}:{{devregport}}/v1/credentials/joel/org.fournier:aircraft
+}]' {{proto}}://{{hostname}}:{{devregport}}/v1/credentials/{{honotenant}}/{{honodevice}}
 
 ########################################################################################
 ### PUBLISH TELEMETRY TO HONO ##########################################################
@@ -75,7 +74,7 @@ curl -i -X PUT -H "Content-Type: application/json" --data '[
 
 POST {{proto}}://{{hostname}}:{{httpadapterport}}/telemetry
 Content-Type: application/json
-Authorization: Basic testdevice@test:test
+Authorization: Basic {{honodevice}}@{{honotenant}}:{{honodevicepwd}}
 
 {
   "topic": "org.eclipse.packages.c2e/demo-device/things/twin/commands/modify",
@@ -115,10 +114,9 @@ Authorization: Basic {{dittodevopsusr}}:{{dittodevopspwd}}
   },
   "piggybackCommand": {
     "type": "connectivity.commands:closeConnection",
-    "connectionId": "hono-connection-for-joel"
+    "connectionId": "hono-connection-for-{{honotenant}}"
   }
 }
-
 
 ########################################################################################
 ### CREATE A NEW CONNECTION FROM DITTO TO HONO #########################################
@@ -137,7 +135,7 @@ Authorization: Basic {{dittodevopsusr}}:{{dittodevopspwd}}
   "piggybackCommand": {
     "type": "connectivity.commands:createConnection",
     "connection": {
-      "id": "hono-connection-for-test",
+      "id": "hono-connection-for-{{honotenant}}",
       "connectionType": "amqp-10",
       "connectionStatus": "open",
       "uri": "amqp://consumer%40HONO:verysecret@c2e-dispatch-router-ext:15672",
@@ -145,8 +143,8 @@ Authorization: Basic {{dittodevopsusr}}:{{dittodevopspwd}}
       "sources": [
         {
           "addresses": [
-            "telemetry/test",
-            "event/test"
+            "telemetry/{{honotenant}}",
+            "event/{{honotenant}}"
           ],
           "authorizationContext": [
             "pre-authenticated:hono-connection"
@@ -165,7 +163,7 @@ Authorization: Basic {{dittodevopsusr}}:{{dittodevopspwd}}
             "enabled": true,
             "address": "{{ header:reply-to }}",
             "headerMapping": {
-              "to": "command/test/{{ header:hono-device-id }}",
+              "to": "command/{{honotenant}}/{{ header:hono-device-id }}",
               "subject": "{{ header:subject | fn:default(topic:action-subject) | fn:default(topic:criterion) }}-response",
               "correlation-id": "{{ header:correlation-id }}",
               "content-type": "{{ header:content-type | fn:default('"'"'application/vnd.eclipse.ditto+json'"'"') }}"
@@ -182,7 +180,7 @@ Authorization: Basic {{dittodevopsusr}}:{{dittodevopspwd}}
         },
         {
           "addresses": [
-            "command_response/test/replies"
+            "command_response/{{honotenant}}/replies"
           ],
           "authorizationContext": [
             "pre-authenticated:hono-connection"
@@ -203,7 +201,7 @@ Authorization: Basic {{dittodevopsusr}}:{{dittodevopspwd}}
       ],
       "targets": [
         {
-          "address": "command/test",
+          "address": "command/{{honotenant}}",
           "authorizationContext": [
             "pre-authenticated:hono-connection"
           ],
@@ -212,15 +210,15 @@ Authorization: Basic {{dittodevopsusr}}:{{dittodevopspwd}}
             "_/_/things/live/messages"
           ],
           "headerMapping": {
-            "to": "command/test/{{ thing:id }}",
+            "to": "command/{{honotenant}}/{{ thing:id }}",
             "subject": "{{ header:subject | fn:default(topic:action-subject) }}",
             "content-type": "{{ header:content-type | fn:default('"'"'application/vnd.eclipse.ditto+json'"'"') }}",
             "correlation-id": "{{ header:correlation-id }}",
-            "reply-to": "{{ fn:default('"'"'command_response/test/replies'"'"') | fn:filter(header:response-required,'"'"'ne'"'"','"'"'false'"'"') }}"
+            "reply-to": "{{ fn:default('"'"'command_response/{{honotenant}}/replies'"'"') | fn:filter(header:response-required,'"'"'ne'"'"','"'"'false'"'"') }}"
           }
         },
         {
-          "address": "command/test",
+          "address": "command/{{honotenant}}",
           "authorizationContext": [
             "pre-authenticated:hono-connection"
           ],
@@ -229,7 +227,7 @@ Authorization: Basic {{dittodevopsusr}}:{{dittodevopspwd}}
             "_/_/things/live/events"
           ],
           "headerMapping": {
-            "to": "command/test/{{ thing:id }}",
+            "to": "command/{{honotenant}}/{{ thing:id }}",
             "subject": "{{ header:subject | fn:default(topic:action-subject) }}",
             "content-type": "{{ header:content-type | fn:default('"'"'application/vnd.eclipse.ditto+json'"'"') }}",
             "correlation-id": "{{ header:correlation-id }}"
@@ -250,7 +248,7 @@ curl -i -X POST -u {{dittodevopsusr}}:{{dittodevopspwd}} -H 'Content-Type: appli
   "piggybackCommand": {
     "type": "connectivity.commands:createConnection",
     "connection": {
-      "id": "hono-connection-for-test",
+      "id": "hono-connection-for-{{honotenant}}",
       "connectionType": "amqp-10",
       "connectionStatus": "open",
       "uri": "amqp://consumer%40HONO:verysecret@c2e-dispatch-router-ext:15672",
@@ -258,8 +256,8 @@ curl -i -X POST -u {{dittodevopsusr}}:{{dittodevopspwd}} -H 'Content-Type: appli
       "sources": [
         {
           "addresses": [
-            "telemetry/test",
-            "event/test"
+            "telemetry/{{honotenant}}",
+            "event/{{honotenant}}"
           ],
           "authorizationContext": [
             "pre-authenticated:hono-connection"
@@ -278,7 +276,7 @@ curl -i -X POST -u {{dittodevopsusr}}:{{dittodevopspwd}} -H 'Content-Type: appli
             "enabled": true,
             "address": "{{ header:reply-to }}",
             "headerMapping": {
-              "to": "command/test/{{ header:hono-device-id }}",
+              "to": "command/{{honotenant}}/{{ header:hono-device-id }}",
               "subject": "{{ header:subject | fn:default(topic:action-subject) | fn:default(topic:criterion) }}-response",
               "correlation-id": "{{ header:correlation-id }}",
               "content-type": "{{ header:content-type | fn:default('"'"'application/vnd.eclipse.ditto+json'"'"') }}"
@@ -295,7 +293,7 @@ curl -i -X POST -u {{dittodevopsusr}}:{{dittodevopspwd}} -H 'Content-Type: appli
         },
         {
           "addresses": [
-            "command_response/test/replies"
+            "command_response/{{honotenant}}/replies"
           ],
           "authorizationContext": [
             "pre-authenticated:hono-connection"
@@ -316,7 +314,7 @@ curl -i -X POST -u {{dittodevopsusr}}:{{dittodevopspwd}} -H 'Content-Type: appli
       ],
       "targets": [
         {
-          "address": "command/test",
+          "address": "command/{{honotenant}}",
           "authorizationContext": [
             "pre-authenticated:hono-connection"
           ],
@@ -325,15 +323,15 @@ curl -i -X POST -u {{dittodevopsusr}}:{{dittodevopspwd}} -H 'Content-Type: appli
             "_/_/things/live/messages"
           ],
           "headerMapping": {
-            "to": "command/test/{{ thing:id }}",
+            "to": "command/{{honotenant}}/{{ thing:id }}",
             "subject": "{{ header:subject | fn:default(topic:action-subject) }}",
             "content-type": "{{ header:content-type | fn:default('"'"'application/vnd.eclipse.ditto+json'"'"') }}",
             "correlation-id": "{{ header:correlation-id }}",
-            "reply-to": "{{ fn:default('"'"'command_response/test/replies'"'"') | fn:filter(header:response-required,'"'"'ne'"'"','"'"'false'"'"') }}"
+            "reply-to": "{{ fn:default('"'"'command_response/{{honotenant}}/replies'"'"') | fn:filter(header:response-required,'"'"'ne'"'"','"'"'false'"'"') }}"
           }
         },
         {
-          "address": "command/test",
+          "address": "command/{{honotenant}}",
           "authorizationContext": [
             "pre-authenticated:hono-connection"
           ],
@@ -342,7 +340,7 @@ curl -i -X POST -u {{dittodevopsusr}}:{{dittodevopspwd}} -H 'Content-Type: appli
             "_/_/things/live/events"
           ],
           "headerMapping": {
-            "to": "command/test/{{ thing:id }}",
+            "to": "command/{{honotenant}}/{{ thing:id }}",
             "subject": "{{ header:subject | fn:default(topic:action-subject) }}",
             "content-type": "{{ header:content-type | fn:default('"'"'application/vnd.eclipse.ditto+json'"'"') }}",
             "correlation-id": "{{ header:correlation-id }}"
@@ -351,7 +349,7 @@ curl -i -X POST -u {{dittodevopsusr}}:{{dittodevopspwd}} -H 'Content-Type: appli
       ]
     }
   }
-}' http://{{hostname}}:{{dittoport}}/devops/piggyback/connectivity
+}' {{proto}}://{{hostname}}:{{dittoport}}/devops/piggyback/connectivity
 
 ########################################################################################
 ### TEST CONNECTION ####################################################################
@@ -381,7 +379,7 @@ curl -X POST -i -u {{dittodevopsusr}}:{{dittodevopspwd}} -H 'Content-Type: appli
             }]
         }
     }
-}' http://{{hostname}}:{{dittoport}}/devops/piggyback/connectivity?timeout=8s
+}' {{proto}}://{{hostname}}:{{dittoport}}/devops/piggyback/connectivity?timeout=8s
 
 ########################################################################################
 ### SETUP A COMMON POLICY ##############################################################
@@ -430,7 +428,7 @@ curl -i -X PUT -u ditto:ditto -H 'Content-Type: application/json' --data '{
       }
     }
   }
-}' http://{{hostname}}:{{dittoport}}/api/2/policies/test:test-policy
+}' http://{{hostname}}:{{dittoport}}/api/2/policies/{{honotenant}}:{{honotenant}}-policy
 
 ########################################################################################
 ### CREATE THE TWIN ####################################################################
@@ -439,7 +437,7 @@ curl -i -X PUT -u ditto:ditto -H 'Content-Type: application/json' --data '{
 ### CURL ###############################################################################
 
 curl -X PUT -u ditto:ditto -H 'Content-Type: application/json' --data '{
-  "policyId": "org.fournier:my-policy",
+  "policyId": "{{honodevice}}:{{honotenant}}-policy",
   "attributes": {
     "location": "France"
   },
@@ -450,7 +448,7 @@ curl -X PUT -u ditto:ditto -H 'Content-Type: application/json' --data '{
       }
     }
   }
-}' http://{{hostname}}:{{dittoport}}/api/2/things/test:testdevice
+}' {{proto}}://{{hostname}}:{{dittoport}}/api/2/things/{{honotenant}}:{{honodevice}}
 
 ########################################################################################
 ### VERIFYING IF PROVISIONED ###########################################################
@@ -458,7 +456,7 @@ curl -X PUT -u ditto:ditto -H 'Content-Type: application/json' --data '{
 
 ### CURL ###############################################################################
 
-curl -i -u ditto:ditto http://{{hostname}}:{{dittoport}}/api/2/things/org.fournier:aircraft
+curl -i -u ditto:ditto {{proto}}://{{hostname}}:{{dittoport}}/api/2/things/{{honodevice}}
 
 ########################################################################################
 ### GET BACK DITTO VALUES ##############################################################
@@ -471,138 +469,11 @@ Authorization: Basic ditto:ditto
 
 curl -u ditto:ditto -w '\n' {{proto}}://{{hostname}}:{{dittoport}}/api/2/things/{{honotenant}}:{{honodevice}}
 
-
 ########################################################################################
 ### DELETE A TWIN ######################################################################
 ########################################################################################
 
 ### CURL ###############################################################################
 
-curl -X DELETE -u ditto:ditto "http://{{hostname}}:{{dittoport}}/api/2/things/org.fournier:aircraft" -H  "accept: */*"
-
-########################################################################################
-### CREATE A POLICY ####################################################################
-########################################################################################
-PUT {{proto}}://{{user}}:{{pwd}}@{{hostname}}:{{port}}/api/2/policies/test:policy 
-Content-Type: application/json
-
-{
-      "entries": {
-        "owner": {
-            "subjects": {
-                "nginx:ditto": {
-                    "type": "nginx basic auth user"
-                }
-            },
-            "resources": {
-                "thing:/": {
-                    "grant": [
-                        "READ","WRITE"
-                    ],
-                    "revoke": []
-                },
-                "policy:/": {
-                    "grant": [
-                        "READ","WRITE"
-                    ],
-                    "revoke": []
-                },
-                "message:/": {
-                    "grant": [
-                        "READ","WRITE"
-                    ],
-                    "revoke": []
-                }
-            }
-        }
-    }
-}
-
-### Create a Demo Device
-
-PUT {{proto}}://{{user}}:{{pwd}}@{{hostname}}:{{port}}/api/2/things/test:esp32
-Content-Type: application/json
-
-{
-    "policyId": "test:policy",
-    "attributes": {
-        "name": "esp32",
-        "type": "esp32 DevKit C"
-    },
-    "features": {
-        "temp_sensor": {
-            "properties": {
-                "type" : "DHT11",
-                "value": 32
-            }
-        }
-    }
-}
-
-### GET ESP32 Info 
-GET {{proto}}://{{user}}:{{pwd}}@{{hostname}}:{{port}}/api/2/things/test:esp32
-
-
-### Create MQTT Connection 
-POST http://devops:foobar@{{hostname}}:8080/devops/piggyback/connectivity?timeout=10 
-Content-Type: application/json
-
-{
-    "targetActorSelection": "/system/sharding/connection",
-    "headers": {
-    	"aggregate": false
-    },
-    "piggybackCommand": {
-        "type": "connectivity.commands:createConnection",
-        "connection": {
-            "id": "mqtt-example-connection",
-            "connectionType": "mqtt",
-            "connectionStatus": "open",
-            "failoverEnabled": true,
-            "uri": "tcp://dbt:dbt@mq.{{hostname}}:1883",
-            "sources": [{
-                "addresses": ["ditto-tutorial/#"],
-                "authorizationContext": ["nginx:ditto"],
-                "qos": 0,
-                "filters": []
-            }],
-            "targets": [{
-                "address": "ditto-tutorial/{{ thing:id }}",
-                "topics": [
-                "_/_/things/twin/events",
-                "_/_/things/live/messages"
-                ],
-                "authorizationContext": ["nginx:ditto"],
-                "qos": 0
-            }]
-        }
-    }
-}
-
-
-### DELETE MQTT Connection
-POST http://devops:foobar@{{hostname}}:8080/devops/piggyback/connectivity?timeout=10 
-Content-Type: application/json
-
-{
-  "targetActorSelection": "/system/sharding/connection",
-  "headers": {
-    "aggregate": false
-  },
-  "piggybackCommand": {
-    "type": "connectivity.commands:deleteConnection",
-    "connectionId": "mqtt-example-connection"
-  }
-}
-
-
-### DELETE esp32 Thing
-DELETE {{proto}}://{{user}}:{{pwd}}@{{hostname}}:{{port}}/api/2/things/test:esp32
-Content-Type: application/json
-
-
-
-
-############## default connection
-
+curl -X DELETE -u ditto:ditto "{{proto}}://{{hostname}}:{{dittoport}}/api/2/things/{{honodevice}}" -H  "accept: */*"
 
