@@ -7,11 +7,70 @@
 @pwd = ditto
 @port = 38080 
 @httpadapterport = 18080
+@devregport = 28080
 @dittoport = 38080
+@dittodevopsusr = devops
+@dittodevopspwd = foobar
 
 ########################################################################################
-### HTTP PUBLISH TELEMETRY TO HONO #####################################################
-# Device and Tenant have to be provisioned previously ##################################
+########################################################################################
+### HONO STUFF #########################################################################
+########################################################################################
+########################################################################################
+
+########################################################################################
+### CREATE A NEW TENANT "joel" #########################################################
+########################################################################################
+
+POST {{proto}}://{{hostname}}:{{devregport}}/v1/tenants/joel
+
+### CURL ###############################################################################
+
+curl -i -X POST {{proto}}://{{hostname}}:{{devregport}}/v1/tenants/joel
+
+########################################################################################
+### REGISTER A NEW DEVICE "org.fournier:aircraft" TO TENANT "joel" #####################
+########################################################################################
+
+POST {{proto}}://{{hostname}}:{{devregport}}/v1/devices/joel/org.fournier:aircraft
+
+### CURL ###############################################################################
+
+curl -i -X POST {{proto}}://{{hostname}}:{{devregport}}/v1/devices/joel/org.fournier:aircraft
+
+########################################################################################
+### SET DEVICE "org.fournier:aircraft" CREDENTIALS #####################################
+########################################################################################
+### CAUTION AUTHENTIFICATION: MQTT USER = my-auth-id-1@joel ############################
+########################################################################################
+
+
+PUT {{proto}}://{{hostname}}:{{devregport}}/v1/credentials/joel/org.fournier:aircraft
+Content-Type: application/json
+
+[
+{
+  "type": "hashed-password",
+  "auth-id": "my-auth-id-1",
+  "secrets": [{
+    "pwd-plain": "flugzeug"
+  }]
+}]
+
+### CURL ###############################################################################
+
+curl -i -X PUT -H "Content-Type: application/json" --data '[
+{
+  "type": "hashed-password",
+  "auth-id": "my-auth-id-1",
+  "secrets": [{
+    "pwd-plain": "flugzeug"
+  }]
+}]' {{proto}}://{{hostname}}:{{devregport}}/v1/credentials/joel/org.fournier:aircraft
+
+########################################################################################
+### PUBLISH TELEMETRY TO HONO ##########################################################
+### Device and Tenant have to be provisioned previously ################################
 ########################################################################################
 
 POST {{proto}}://{{hostname}}:{{httpadapterport}}/telemetry
@@ -22,7 +81,7 @@ Authorization: Basic {{honodevice}}@{{honotenant}}:{{honodevicepwd}}
   "topic": "org.eclipse.packages.c2e/demo-device/things/twin/commands/modify",
   "headers": {},
   "path": "/features/temperature/properties/value",
-  "value": 45
+  "value": 20
 }
 
 ### CURL ###############################################################################
@@ -36,7 +95,220 @@ curl -X POST -u {{honodevice}}@{{honotenant}}:{{honodevicepwd}}
 }' {{proto}}://{{hostname}}:{{httpadapterport}}/telemetry
 
 ########################################################################################
-### HTTP GET BACK DITTO VALUES #########################################################
+########################################################################################
+### DITTO STUFF ########################################################################
+########################################################################################
+########################################################################################
+
+########################################################################################
+### CREATE A NEW CONNECTION FROM DITTO TO HONO #########################################
+### Tenant, Device and Credentials have to be provisioned previously in HONO ###########
+########################################################################################
+
+### CURL ###############################################################################
+
+curl -i -X POST -u {{dittodevopsusr}}:{{dittodevopspwd}} -H 'Content-Type: application/json' --data '{
+  "targetActorSelection": "/system/sharding/connection",
+  "headers": {
+    "aggregate": false
+  },
+  "piggybackCommand": {
+    "type": "connectivity.commands:createConnection",
+    "connection": {
+      "id": "hono-connection-for-'"joel"'",
+      "connectionType": "amqp-10",
+      "connectionStatus": "open",
+      "uri": "amqp://consumer%40HONO:verysecret@'"c2e"'-dispatch-router-ext:15672",
+      "failoverEnabled": true,
+      "sources": [
+        {
+          "addresses": [
+            "telemetry/'"joel"'",
+            "event/'"joel"'"
+          ],
+          "authorizationContext": [
+            "pre-authenticated:hono-connection"
+          ],
+          "enforcement": {
+            "input": "{{ header:device_id }}",
+            "filters": [
+              "{{ entity:id }}"
+            ]
+          },
+          "headerMapping": {
+            "hono-device-id": "{{ header:device_id }}",
+            "content-type": "{{ header:content-type }}"
+          },
+          "replyTarget": {
+            "enabled": true,
+            "address": "{{ header:reply-to }}",
+            "headerMapping": {
+              "to": "command/'"joel"'/{{ header:hono-device-id }}",
+              "subject": "{{ header:subject | fn:default(topic:action-subject) | fn:default(topic:criterion) }}-response",
+              "correlation-id": "{{ header:correlation-id }}",
+              "content-type": "{{ header:content-type | fn:default('"'"'application/vnd.eclipse.ditto+json'"'"') }}"
+            },
+            "expectedResponseTypes": [
+              "response",
+              "error"
+            ]
+          },
+          "acknowledgementRequests": {
+            "includes": [],
+            "filter": "fn:filter(header:qos,'"'"'ne'"'"','"'"'0'"'"')"
+          }
+        },
+        {
+          "addresses": [
+            "command_response/'"joel"'/replies"
+          ],
+          "authorizationContext": [
+            "pre-authenticated:hono-connection"
+          ],
+          "headerMapping": {
+            "content-type": "{{ header:content-type }}",
+            "correlation-id": "{{ header:correlation-id }}",
+            "status": "{{ header:status }}"
+          },
+          "replyTarget": {
+            "enabled": false,
+            "expectedResponseTypes": [
+              "response",
+              "error"
+            ]
+          }
+        }
+      ],
+      "targets": [
+        {
+          "address": "command/'"joel"'",
+          "authorizationContext": [
+            "pre-authenticated:hono-connection"
+          ],
+          "topics": [
+            "_/_/things/live/commands",
+            "_/_/things/live/messages"
+          ],
+          "headerMapping": {
+            "to": "command/'"joel"'/{{ thing:id }}",
+            "subject": "{{ header:subject | fn:default(topic:action-subject) }}",
+            "content-type": "{{ header:content-type | fn:default('"'"'application/vnd.eclipse.ditto+json'"'"') }}",
+            "correlation-id": "{{ header:correlation-id }}",
+            "reply-to": "{{ fn:default('"'"'command_response/'"joel"'/replies'"'"') | fn:filter(header:response-required,'"'"'ne'"'"','"'"'false'"'"') }}"
+          }
+        },
+        {
+          "address": "command/'"joel"'",
+          "authorizationContext": [
+            "pre-authenticated:hono-connection"
+          ],
+          "topics": [
+            "_/_/things/twin/events",
+            "_/_/things/live/events"
+          ],
+          "headerMapping": {
+            "to": "command/'"joel"'/{{ thing:id }}",
+            "subject": "{{ header:subject | fn:default(topic:action-subject) }}",
+            "content-type": "{{ header:content-type | fn:default('"'"'application/vnd.eclipse.ditto+json'"'"') }}",
+            "correlation-id": "{{ header:correlation-id }}"
+          }
+        }
+      ]
+    }
+  }
+}' http://{{hostname}}:{{dittoport}}/devops/piggyback/connectivity
+
+########################################################################################
+### SETUP A COMMON POLICY ##############################################################
+########################################################################################
+
+### CURL ###############################################################################
+
+curl -i -X PUT -u ditto:ditto -H 'Content-Type: application/json' --data '{
+  "entries": {
+    "DEFAULT": {
+      "subjects": {
+        "{{ request:subjectId }}": {
+           "type": "Ditto user authenticated via nginx"
+        }
+      },
+      "resources": {
+        "thing:/": {
+          "grant": ["READ", "WRITE"],
+          "revoke": []
+        },
+        "policy:/": {
+          "grant": ["READ", "WRITE"],
+          "revoke": []
+        },
+        "message:/": {
+          "grant": ["READ", "WRITE"],
+          "revoke": []
+        }
+      }
+    },
+    "HONO": {
+      "subjects": {
+        "pre-authenticated:hono-connection": {
+          "type": "Connection to Eclipse Hono"
+        }
+      },
+      "resources": {
+        "thing:/": {
+          "grant": ["READ", "WRITE"],
+          "revoke": []
+        },
+        "message:/": {
+          "grant": ["READ", "WRITE"],
+          "revoke": []
+        }
+      }
+    }
+  }
+}' http://{{hostname}}:{{dittoport}}/api/2/policies/org.fournier:my-policy
+
+########################################################################################
+### CREATE THE TWIN ####################################################################
+########################################################################################
+
+### CURL ###############################################################################
+
+curl -X PUT -u ditto:ditto -H 'Content-Type: application/json' --data '{
+  "policyId": "org.fournier:my-policy",
+  "attributes": {
+    "location": "France"
+  },
+  "features": {
+    "altitude": {
+      "properties": {
+        "value": null
+      }
+    },
+    "heading": {
+      "properties": {
+        "value": null
+      }
+    },
+    "speed": {
+      "properties": {
+        "value": null
+      }
+    },
+    "verticalspeed": {
+      "properties": {
+        "value": null
+      }
+    },
+    "bank": {
+      "properties": {
+        "value": null
+      }
+    }
+  }
+}' http://{{hostname}}:{{dittoport}}/api/2/things/org.fournier:aircraft
+
+########################################################################################
+### GET BACK DITTO VALUES ##############################################################
 ########################################################################################
 
 GET {{proto}}://{{hostname}}:{{dittoport}}/api/2/things/{{honotenant}}:{{honodevice}}
@@ -46,14 +318,9 @@ Authorization: Basic ditto:ditto
 
 curl -u ditto:ditto -w '\n' {{proto}}://{{hostname}}:{{dittoport}}/api/2/things/{{honotenant}}:{{honodevice}}
 
-
-
-
 ########################################################################################
-### DITTO STUFF ########################################################################
+### CREATE A POLICY ####################################################################
 ########################################################################################
-
-### CREATE A POLICY 
 PUT {{proto}}://{{user}}:{{pwd}}@{{hostname}}:{{port}}/api/2/policies/test:policy 
 Content-Type: application/json
 
