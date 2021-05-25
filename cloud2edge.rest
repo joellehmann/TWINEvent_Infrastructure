@@ -1,0 +1,174 @@
+@proto = http
+@hostname = 141.19.44.65 
+@user = ditto
+@honodevice = demo-device
+@honotenant = org.eclipse.packages.c2e
+@honodevicepwd = demo-secret
+@pwd = ditto
+@port = 38080 
+@httpadapterport = 18080
+@dittoport = 38080
+
+########################################################################################
+### HTTP PUBLISH TELEMETRY TO HONO #####################################################
+# Device and Tenant have to be provisioned previously ##################################
+########################################################################################
+
+POST {{proto}}://{{hostname}}:{{httpadapterport}}/telemetry
+Content-Type: application/json
+Authorization: Basic {{honodevice}}@{{honotenant}}:{{honodevicepwd}}
+
+{
+  "topic": "org.eclipse.packages.c2e/demo-device/things/twin/commands/modify",
+  "headers": {},
+  "path": "/features/temperature/properties/value",
+  "value": 45
+}
+
+### CURL ###############################################################################
+
+curl -X POST -u {{honodevice}}@{{honotenant}}:{{honodevicepwd}}
+--data-binary '{
+  "topic": "org.eclipse.packages.c2e/demo-device/things/twin/commands/modify",
+  "headers": {},
+  "path": "/features/temperature/properties/value",
+  "value": 25
+}' {{proto}}://{{hostname}}:{{httpadapterport}}/telemetry
+
+########################################################################################
+### HTTP GET BACK DITTO VALUES #########################################################
+########################################################################################
+
+GET {{proto}}://{{hostname}}:{{dittoport}}/api/2/things/{{honotenant}}:{{honodevice}}
+Authorization: Basic ditto:ditto
+
+### CURL ###############################################################################
+
+curl -u ditto:ditto -w '\n' {{proto}}://{{hostname}}:{{dittoport}}/api/2/things/{{honotenant}}:{{honodevice}}
+
+
+
+
+########################################################################################
+### DITTO STUFF ########################################################################
+########################################################################################
+
+### CREATE A POLICY 
+PUT {{proto}}://{{user}}:{{pwd}}@{{hostname}}:{{port}}/api/2/policies/test:policy 
+Content-Type: application/json
+
+{
+      "entries": {
+        "owner": {
+            "subjects": {
+                "nginx:ditto": {
+                    "type": "nginx basic auth user"
+                }
+            },
+            "resources": {
+                "thing:/": {
+                    "grant": [
+                        "READ","WRITE"
+                    ],
+                    "revoke": []
+                },
+                "policy:/": {
+                    "grant": [
+                        "READ","WRITE"
+                    ],
+                    "revoke": []
+                },
+                "message:/": {
+                    "grant": [
+                        "READ","WRITE"
+                    ],
+                    "revoke": []
+                }
+            }
+        }
+    }
+}
+
+### Create a Demo Device
+
+PUT {{proto}}://{{user}}:{{pwd}}@{{hostname}}:{{port}}/api/2/things/test:esp32
+Content-Type: application/json
+
+{
+    "policyId": "test:policy",
+    "attributes": {
+        "name": "esp32",
+        "type": "esp32 DevKit C"
+    },
+    "features": {
+        "temp_sensor": {
+            "properties": {
+                "type" : "DHT11",
+                "value": 32
+            }
+        }
+    }
+}
+
+### GET ESP32 Info 
+GET {{proto}}://{{user}}:{{pwd}}@{{hostname}}:{{port}}/api/2/things/test:esp32
+
+
+### Create MQTT Connection 
+POST http://devops:foobar@{{hostname}}:8080/devops/piggyback/connectivity?timeout=10 
+Content-Type: application/json
+
+{
+    "targetActorSelection": "/system/sharding/connection",
+    "headers": {
+    	"aggregate": false
+    },
+    "piggybackCommand": {
+        "type": "connectivity.commands:createConnection",
+        "connection": {
+            "id": "mqtt-example-connection",
+            "connectionType": "mqtt",
+            "connectionStatus": "open",
+            "failoverEnabled": true,
+            "uri": "tcp://dbt:dbt@mq.{{hostname}}:1883",
+            "sources": [{
+                "addresses": ["ditto-tutorial/#"],
+                "authorizationContext": ["nginx:ditto"],
+                "qos": 0,
+                "filters": []
+            }],
+            "targets": [{
+                "address": "ditto-tutorial/{{ thing:id }}",
+                "topics": [
+                "_/_/things/twin/events",
+                "_/_/things/live/messages"
+                ],
+                "authorizationContext": ["nginx:ditto"],
+                "qos": 0
+            }]
+        }
+    }
+}
+
+
+### DELETE MQTT Connection
+POST http://devops:foobar@{{hostname}}:8080/devops/piggyback/connectivity?timeout=10 
+Content-Type: application/json
+
+{
+  "targetActorSelection": "/system/sharding/connection",
+  "headers": {
+    "aggregate": false
+  },
+  "piggybackCommand": {
+    "type": "connectivity.commands:deleteConnection",
+    "connectionId": "mqtt-example-connection"
+  }
+}
+
+
+### DELETE esp32 Thing
+DELETE {{proto}}://{{user}}:{{pwd}}@{{hostname}}:{{port}}/api/2/things/test:esp32
+Content-Type: application/json
+
+
