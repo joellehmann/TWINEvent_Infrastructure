@@ -351,35 +351,72 @@ curl -i -X POST -u {{dittodevopsusr}}:{{dittodevopspwd}} -H 'Content-Type: appli
   }
 }' {{proto}}://{{hostname}}:{{dittoport}}/devops/piggyback/connectivity
 
+
+
 ########################################################################################
-### TEST CONNECTION ####################################################################
+### MODIFY CONNECTION WITH JS MAPPER ###################################################
 ########################################################################################
 
-### CURL ###############################################################################
+POST {{proto}}://{{hostname}}:{{dittoport}}/devops/piggyback/connectivity?timeout=8s
+Content-Type: application/json
+Authorization: Basic {{dittodevopsusr}}:{{dittodevopspwd}}
 
-curl -X POST -i -u {{dittodevopsusr}}:{{dittodevopspwd}} -H 'Content-Type: application/json' -d '{
-    "targetActorSelection": "/system/sharding/connection",
-    "headers": {
-        "aggregate": false
-    },
-    "piggybackCommand": {
-        "type": "connectivity.commands:testConnection",
-        "connection": {
-            "id": "hono-connection-for-joel",
-            "connectionType": "amqp-10",
-            "connectionStatus": "open",
-            "uri": "amqp://consumer%40HONO:verysecret@hono.eclipse.org:15672",
-            "failoverEnabled": true,
-            "sources": [{
-                "addresses": [
-                    "telemetry/org.eclipse.ditto",
-                    "event/org.eclipse.ditto"
-                ],
-                "authorizationContext": ["nginx:demo5"]
-            }]
-        }
-    }
-}' {{proto}}://{{hostname}}:{{dittoport}}/devops/piggyback/connectivity?timeout=8s
+
+########################################################################################
+### DISCOVBER ALL CONNECTIONS ##########################################################
+########################################################################################
+
+POST {{proto}}://{{hostname}}:{{dittoport}}/devops/piggyback/connectivity?timeout=8s
+Content-Type: application/json
+Authorization: Basic {{dittodevopsusr}}:{{dittodevopspwd}}
+
+{
+  "targetActorSelection": "/user/connectivityRoot/connectionIdsRetrieval/singleton",
+  "headers": {
+    "aggregate": false
+  },
+  "piggybackCommand": {
+    "type": "connectivity.commands:retrieveAllConnectionIds"
+  }
+}
+
+########################################################################################
+### TEST CONNECTION STATUS #############################################################
+########################################################################################
+
+POST {{proto}}://{{hostname}}:{{dittoport}}/devops/piggyback/connectivity?timeout=8s
+Content-Type: application/json
+Authorization: Basic {{dittodevopsusr}}:{{dittodevopspwd}}
+
+{
+  "targetActorSelection": "/system/sharding/connection",
+  "headers": {
+    "aggregate": false
+  },
+  "piggybackCommand": {
+    "type": "connectivity.commands:retrieveConnectionStatus",
+    "connectionId": "hono-connection-for-test"
+  }
+}
+
+########################################################################################
+### RETRIEVE CONNECTION METRICS ########################################################
+########################################################################################
+
+POST {{proto}}://{{hostname}}:{{dittoport}}/devops/piggyback/connectivity?timeout=8s
+Content-Type: application/json
+Authorization: Basic {{dittodevopsusr}}:{{dittodevopspwd}}
+
+{
+  "targetActorSelection": "/system/sharding/connection",
+  "headers": {
+    "aggregate": false
+  },
+  "piggybackCommand": {
+    "type": "connectivity.commands:retrieveConnectionMetrics",
+    "connectionId": "hono-connection-for-test"
+  }
+}
 
 ########################################################################################
 ### SETUP A COMMON POLICY ##############################################################

@@ -1,125 +1,160 @@
-@proto = http
-@hostname = 141.19.44.65 
-@user = ditto
-@pwd = ditto
-@port = 38080 
 
-### CREATE A POLICY 
-PUT {{proto}}://{{user}}:{{pwd}}@{{hostname}}:{{port}}/api/2/policies/test:policy 
-Content-Type: application/json
+
+@proto = http @hostname = myserver @user = username @pwd = password @port = 8080
+
+### CREATE A POLICY PUT {{proto}}://{{user}}:{{pwd}}@{{hostname}}:{{port}}/api/2/policies/test:policy Content-Type: application/json
 
 {
-      "entries": {
-        "owner": {
-            "subjects": {
-                "nginx:ditto": {
-                    "type": "nginx basic auth user"
+
+        "entries": {
+
+            "owner": {
+
+                "subjects": {
+
+                    "nginx:ditto": {
+                        "type": "nginx basic auth user"
+
+                    }
+
+                }, "resources": {
+
+                    "thing:/": {
+
+                        "grant": [
+                            "READ","WRITE"
+
+                        ], "revoke": []
+
+                    }, "policy:/": {
+
+                        "grant": [
+                            "READ","WRITE"
+
+                        ], "revoke": []
+
+                    }, "message:/": {
+
+                        "grant": [
+                            "READ","WRITE"
+
+                        ], "revoke": []
+
+                    }
+
                 }
-            },
-            "resources": {
-                "thing:/": {
-                    "grant": [
-                        "READ","WRITE"
-                    ],
-                    "revoke": []
-                },
-                "policy:/": {
-                    "grant": [
-                        "READ","WRITE"
-                    ],
-                    "revoke": []
-                },
-                "message:/": {
-                    "grant": [
-                        "READ","WRITE"
-                    ],
-                    "revoke": []
-                }
+
             }
-        }
+
     }
+
 }
 
 ### Create a Demo Device
 
-PUT {{proto}}://{{user}}:{{pwd}}@{{hostname}}:{{port}}/api/2/things/test:esp32
-Content-Type: application/json
+PUT {{proto}}://{{user}}:{{pwd}}@{{hostname}}:{{port}}/api/2/things/test:esp32 Content-Type: application/json
 
 {
-    "policyId": "test:policy",
-    "attributes": {
-        "name": "esp32",
-        "type": "esp32 DevKit C"
-    },
-    "features": {
+
+    "policyId": "test:policy", "attributes": {
+
+        "name": "esp32", "type": "esp32 DevKit C"
+
+    }, "features": {
+
         "temp_sensor": {
+
             "properties": {
-                "type" : "DHT11",
-                "value": 32
+                "type" : "DHT11", "value": 32
+
             }
+
         }
+
     }
+
 }
 
-### GET ESP32 Info 
-GET {{proto}}://{{user}}:{{pwd}}@{{hostname}}:{{port}}/api/2/things/test:esp32
+### GET ESP32 Info GET {{proto}}://{{user}}:{{pwd}}@{{hostname}}:{{port}}/api/2/things/test:esp32
 
-
-### Create MQTT Connection 
-POST http://devops:foobar@{{hostname}}:8080/devops/piggyback/connectivity?timeout=10 
-Content-Type: application/json
+### Create MQTT Connection POST http://devops:foobar@{{hostname}}:8080/devops/piggyback/connectivity?timeout=10 Content-Type: application/json
 
 {
-    "targetActorSelection": "/system/sharding/connection",
-    "headers": {
-    	"aggregate": false
-    },
-    "piggybackCommand": {
-        "type": "connectivity.commands:createConnection",
-        "connection": {
-            "id": "mqtt-example-connection",
-            "connectionType": "mqtt",
-            "connectionStatus": "open",
-            "failoverEnabled": true,
-            "uri": "tcp://dbt:dbt@mq.{{hostname}}:1883",
-            "sources": [{
-                "addresses": ["ditto-tutorial/#"],
-                "authorizationContext": ["nginx:ditto"],
-                "qos": 0,
-                "filters": []
-            }],
-            "targets": [{
-                "address": "ditto-tutorial/{{ thing:id }}",
-                "topics": [
-                "_/_/things/twin/events",
-                "_/_/things/live/messages"
-                ],
-                "authorizationContext": ["nginx:ditto"],
-                "qos": 0
+
+    "targetActorSelection": "/system/sharding/connection", "headers": {
+
+        "aggregate": false
+
+    }, "piggybackCommand": {
+
+        "type": "connectivity.commands:createConnection", "connection": {
+
+            "id": "mqtt-example-connection", "connectionType": "mqtt", "connectionStatus": "open", "failoverEnabled": true, "uri": "tcp://dbt:dbt@mq.{{hostname}}:1883", "sources": [{
+
+                "addresses": ["ditto-tutorial/#"], "authorizationContext": ["nginx:ditto"], "qos": 0, "filters": []
+
+            }], "targets": [{
+
+                "address": "ditto-tutorial/{{ thing:id }}", "topics": [ "_/_/things/twin/events", "_/_/things/live/messages" ], "authorizationContext": ["nginx:ditto"], "qos": 0
+
             }]
+
         }
+
     }
+
 }
 
-
-### DELETE MQTT Connection
-POST http://devops:foobar@{{hostname}}:8080/devops/piggyback/connectivity?timeout=10 
-Content-Type: application/json
+### Add mapping function POST http://devops:foobar@{{hostname}}:8080/devops/piggyback/connectivity?timeout=10 Content-Type: application/json
 
 {
-  "targetActorSelection": "/system/sharding/connection",
-  "headers": {
-    "aggregate": false
-  },
-  "piggybackCommand": {
-    "type": "connectivity.commands:deleteConnection",
-    "connectionId": "mqtt-example-connection"
-  }
+
+    "targetActorSelection": "/system/sharding/connection", "headers": {
+
+        "aggregate": false
+
+    }, "piggybackCommand": {
+
+        "type": "connectivity.commands:modifyConnection", "connection": {
+
+            "id": "mqtt-example-connection", "connectionType": "mqtt", "connectionStatus": "open", "failoverEnabled": true, "uri": "tcp://dbt:dbt@mq.{{hostname}}:1883", "sources": [{
+
+                "addresses": ["ditto-tutorial/#"], "authorizationContext": ["nginx:ditto"], "qos": 0, "filters": []
+
+            }], "targets": [{
+
+                "address": "ditto-tutorial/{{ thing:id }}", "topics": [ "_/_/things/twin/events", "_/_/things/live/messages" ], "authorizationContext": ["nginx:ditto"], "qos": 0
+
+            }], "mappingContext": {
+
+                "mappingEngine": "JavaScript", "options": {
+
+                    "incomingScript": "function mapToDittoProtocolMsg(headers, textPayload, bytePayload, contentType) {const jsonString = String.fromCharCode.apply(null, new Uint8Array(bytePayload));const jsonData = JSON.parse(jsonString);const thingId = jsonData.thingId.split(':');const value = {temp_sensor: {properties: {value: jsonData.value}}}; return Ditto.buildDittoProtocolMsg(thingId[0], thingId[1], 'things', 'twin', 'commands', 'modify','/features', headers, value);}"
+
+                }
+
+            }
+
+        }
+
+    }
+
 }
 
+### DELETE MQTT Connection POST http://devops:foobar@{{hostname}}:8080/devops/piggyback/connectivity?timeout=10 Content-Type: application/json
 
-### DELETE esp32 Thing
-DELETE {{proto}}://{{user}}:{{pwd}}@{{hostname}}:{{port}}/api/2/things/test:esp32
-Content-Type: application/json
+{
 
+    "targetActorSelection": "/system/sharding/connection", "headers": {
 
+        "aggregate": false
+
+    }, "piggybackCommand": {
+
+        "type": "connectivity.commands:deleteConnection", "connectionId": "mqtt-example-connection"
+
+    }
+
+}
+
+### DELETE esp32 Thing DELETE {{proto}}://{{user}}:{{pwd}}@{{hostname}}:{{port}}/api/2/things/test:esp32 Content-Type: application/json

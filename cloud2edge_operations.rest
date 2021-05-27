@@ -31,8 +31,8 @@ Authorization: Basic testdevice@test:test
 {
   "topic": "test/testdevice/things/twin/commands/modify",
   "headers": {},
-  "path": "/features/temperature/properties/value",
-  "value": 2100
+  "path": "/features/temper/properties/value",
+  "value": "666"
 }
 
 ### CURL ###############################################################################
