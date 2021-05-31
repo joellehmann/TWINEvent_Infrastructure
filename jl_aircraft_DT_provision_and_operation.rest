@@ -1,0 +1,479 @@
+@proto = http
+@hostname = 141.19.44.65 
+@user = ditto
+@honodevice = rf4
+@org = org.fournier
+@honotenant = aircraft
+@honodevicepwd = flugzeug
+@manufacturer = org.fournier
+@pwd = ditto
+@port = 38080 
+@httpadapterport = 18080
+@devregport = 28080
+@dittoport = 38080
+@dittodevopsusr = devops
+@dittodevopspwd = foobar
+
+########################################################################################
+### Create Tenant ######################################################################
+########################################################################################
+
+curl -i -X POST http://{{hostname}}:{{devregport}}/v1/tenants/{{honotenant}}
+
+########################################################################################
+### Register Device ####################################################################
+########################################################################################
+
+curl -i -X POST http://{{hostname}}:{{devregport}}/v1/devices/{{honotenant}}/{{org}}:{{honodevice}}
+
+########################################################################################
+### Set Device Credentials #############################################################
+########################################################################################
+
+curl -i -X PUT -H "Content-Type: application/json" --data '[
+{
+  "type": "hashed-password",
+  "auth-id": "{{honodevice}}",
+  "secrets": [{
+    "pwd-plain": "{{honodevicepwd}}"
+  }]
+}]' http://{{hostname}}:{{devregport}}/v1/credentials/{{honotenant}}/{{org}}:{{honodevice}}
+
+########################################################################################
+### Create Connection ##################################################################
+########################################################################################
+
+curl -i -X POST -u devops:foobar -H 'Content-Type: application/json' --data '{
+  "targetActorSelection": "/system/sharding/connection",
+  "headers": {
+    "aggregate": false
+  },
+  "piggybackCommand": {
+    "type": "connectivity.commands:createConnection",
+    "connection": {
+      "id": "hono-connection-for-'"aircraft"'",
+      "connectionType": "amqp-10",
+      "connectionStatus": "open",
+      "uri": "amqp://consumer%40HONO:verysecret@'"c2e"'-dispatch-router-ext:15672",
+      "failoverEnabled": true,
+      "sources": [
+        {
+          "addresses": [
+            "telemetry/'"aircraft"'",
+            "event/'"aircraft"'"
+          ],
+          "authorizationContext": [
+            "pre-authenticated:hono-connection"
+          ],
+          "enforcement": {
+            "input": "{{ header:device_id }}",
+            "filters": [
+              "{{ entity:id }}"
+            ]
+          },
+          "headerMapping": {
+            "hono-device-id": "{{ header:device_id }}",
+            "content-type": "{{ header:content-type }}"
+          },
+          "replyTarget": {
+            "enabled": true,
+            "address": "{{ header:reply-to }}",
+            "headerMapping": {
+              "to": "command/'"aircraft"'/{{ header:hono-device-id }}",
+              "subject": "{{ header:subject | fn:default(topic:action-subject) | fn:default(topic:criterion) }}-response",
+              "correlation-id": "{{ header:correlation-id }}",
+              "content-type": "{{ header:content-type | fn:default('"'"'application/vnd.eclipse.ditto+json'"'"') }}"
+            },
+            "expectedResponseTypes": [
+              "response",
+              "error"
+            ]
+          },
+          "acknowledgementRequests": {
+            "includes": [],
+            "filter": "fn:filter(header:qos,'"'"'ne'"'"','"'"'0'"'"')"
+          }
+        },
+        {
+          "addresses": [
+            "command_response/'"aircraft"'/replies"
+          ],
+          "authorizationContext": [
+            "pre-authenticated:hono-connection"
+          ],
+          "headerMapping": {
+            "content-type": "{{ header:content-type }}",
+            "correlation-id": "{{ header:correlation-id }}",
+            "status": "{{ header:status }}"
+          },
+          "replyTarget": {
+            "enabled": false,
+            "expectedResponseTypes": [
+              "response",
+              "error"
+            ]
+          }
+        }
+      ],
+      "targets": [
+        {
+          "address": "command/'"aircraft"'",
+          "authorizationContext": [
+            "pre-authenticated:hono-connection"
+          ],
+          "topics": [
+            "_/_/things/live/commands",
+            "_/_/things/live/messages"
+          ],
+          "headerMapping": {
+            "to": "command/'"aircraft"'/{{ thing:id }}",
+            "subject": "{{ header:subject | fn:default(topic:action-subject) }}",
+            "content-type": "{{ header:content-type | fn:default('"'"'application/vnd.eclipse.ditto+json'"'"') }}",
+            "correlation-id": "{{ header:correlation-id }}",
+            "reply-to": "{{ fn:default('"'"'command_response/'"aircraft"'/replies'"'"') | fn:filter(header:response-required,'"'"'ne'"'"','"'"'false'"'"') }}"
+          }
+        },
+        {
+          "address": "command/'"aircraft"'",
+          "authorizationContext": [
+            "pre-authenticated:hono-connection"
+          ],
+          "topics": [
+            "_/_/things/twin/events",
+            "_/_/things/live/events"
+          ],
+          "headerMapping": {
+            "to": "command/'"aircraft"'/{{ thing:id }}",
+            "subject": "{{ header:subject | fn:default(topic:action-subject) }}",
+            "content-type": "{{ header:content-type | fn:default('"'"'application/vnd.eclipse.ditto+json'"'"') }}",
+            "correlation-id": "{{ header:correlation-id }}"
+          }
+        }
+      ]
+    }
+  }
+}' http://{{hostname}}:{{dittoport}}/devops/piggyback/connectivity
+
+########################################################################################
+### Setup policy #######################################################################
+########################################################################################
+
+curl -i -X PUT -u ditto:ditto -H 'Content-Type: application/json' --data '{
+  "entries": {
+    "DEFAULT": {
+      "subjects": {
+        "{{ request:subjectId }}": {
+           "type": "Ditto user authenticated via nginx"
+        }
+      },
+      "resources": {
+        "thing:/": {
+          "grant": ["READ", "WRITE"],
+          "revoke": []
+        },
+        "policy:/": {
+          "grant": ["READ", "WRITE"],
+          "revoke": []
+        },
+        "message:/": {
+          "grant": ["READ", "WRITE"],
+          "revoke": []
+        }
+      }
+    },
+    "HONO": {
+      "subjects": {
+        "pre-authenticated:hono-connection": {
+          "type": "Connection to Eclipse Hono"
+        }
+      },
+      "resources": {
+        "thing:/": {
+          "grant": ["READ", "WRITE"],
+          "revoke": []
+        },
+        "message:/": {
+          "grant": ["READ", "WRITE"],
+          "revoke": []
+        }
+      }
+    }
+  }
+}' http://{{hostname}}:{{dittoport}}/api/2/policies/{{org}}:{{honodevice}}
+
+########################################################################################
+### Create a twin ######################################################################
+########################################################################################
+
+curl -X PUT -u ditto:ditto -H 'Content-Type: application/json' --data '{
+  "policyId": "{{org}}:{{honodevice}}",
+  "attributes": {
+    "location": "Germany",
+    "airportID": "EDRO",
+    "airportName": "Sonderlandeplatz Schweighofen"
+  },
+  "features": {
+  }
+}' http://{{hostname}}:{{dittoport}}/api/2/things/{{org}}:{{honodevice}}
+
+########################################################################################
+### DELETE THE TWIN ####################################################################
+########################################################################################
+
+DELETE {{proto}}://{{hostname}}:{{dittoport}}/api/2/things/org.fournier:rf4
+Authorization: Basic ditto:ditto
+
+########################################################################################
+### Delete all Features #ä##############################################################
+########################################################################################
+
+DELETE {{proto}}://{{hostname}}:{{dittoport}}/api/2/things/org.fournier:rf4/features
+Authorization: Basic ditto:ditto
+
+########################################################################################
+### New Features #ä#####################################################################
+########################################################################################
+
+PUT {{proto}}://{{hostname}}:{{dittoport}}/api/2/things/org.fournier:rf4/features
+Content-Type: application/json
+Authorization: Basic ditto:ditto
+
+{
+	"engine": {
+		"properties": {
+			"manufacturer": [
+				"com.rectimo:4AR1200"
+			],
+			"yearOfManufacturing": 1968,
+      "status": {
+        "running": {
+          "value": true
+        },
+        "fuelSwitch": {
+          "value": true
+        },
+        "hours": {
+          "value": 1804,
+        "unit": "h"
+        },
+        "cylheadtemp": {
+          "value": 185,
+        "unit": "deg Celsius"
+        },
+        "oiltemp": {
+          "value": 60,
+        "unit": "deg Celsius"
+        },
+        "Tach": {
+          "value": 2950,
+        "unit": "rpm"
+        }
+      }
+    }
+	},
+	"airframe": {
+		"properties": {
+			"configuration": {
+				"yearOfManufacturing": 1968,
+				"builtNo": 4102,
+				"reg": "D-KALC"
+			},
+			"status": {
+				"damaged": false,
+				"condition": "fancy"
+			}
+		}
+	},
+  "instrumentStatus": {
+    "properties": {
+      "inFlight": {
+        "value": false
+      },
+      "landingGear": {
+        "value": true
+      },
+      "mainSwitch": {
+        "value": true
+      },
+      "antiCollisionLight": {
+        "value": true
+      },
+      "radio": {
+        "value": true,
+        "frequency": 118.085,
+        "unit": "MHz"
+      },
+      "qnh": {
+        "value": 1013,
+        "unit": "hPa"
+      },
+      "transponder": {
+        "value": 7000
+      }
+    }
+  },
+  "telemetry": {
+    "properties": {
+      "altitude": {
+        "value": null,
+        "unit": "ft"
+      },
+      "speed": {
+        "value": null,
+        "unit": "km/h"
+      },
+      "heading": {
+        "value": null,
+        "unit": "deg"
+      },
+      "bank": {
+        "value": null,
+        "unit": "deg"
+      }
+    }
+  }
+}
+
+########################################################################################
+### PUBLISH TELEMETRY TO HONO ##########################################################
+### Device and Tenant have to be provisioned previously ################################
+########################################################################################
+
+POST {{proto}}://{{hostname}}:{{httpadapterport}}/telemetry
+Content-Type: application/json
+Authorization: Basic {{honodevice}}@{{honotenant}}:{{honodevicepwd}}
+
+{
+  "topic": "{{org}}/{{honodevice}}/things/twin/commands/modify",
+  "headers": {},
+  "path": "/features/instrumentStatus/properties/inFlight/value",
+  "value": true
+},
+{
+  "topic": "{{org}}/{{honodevice}}/things/twin/commands/modify",
+  "headers": {},
+  "path": "/features/instrumentStatus/properties/landingGear/value",
+  "value": false
+}
+
+########################################################################################
+### PUBLISH TELEMETRY TO HONO ##########################################################
+### Device and Tenant have to be provisioned previously ################################
+########################################################################################
+
+### NULL ###############################################################################
+### Altitude ###########################################################################
+
+POST {{proto}}://{{hostname}}:{{httpadapterport}}/telemetry
+Content-Type: application/json
+Authorization: Basic {{honodevice}}@{{honotenant}}:{{honodevicepwd}}
+
+{
+  "topic": "{{org}}/{{honodevice}}/things/twin/commands/modify",
+  "headers": {},
+  "path": "/features/telemetry/properties/altitude/value",
+  "value": null
+}
+
+### Speed ##############################################################################
+
+POST {{proto}}://{{hostname}}:{{httpadapterport}}/telemetry
+Content-Type: application/json
+Authorization: Basic {{honodevice}}@{{honotenant}}:{{honodevicepwd}}
+
+{
+  "topic": "{{org}}/{{honodevice}}/things/twin/commands/modify",
+  "headers": {},
+  "path": "/features/telemetry/properties/speed/value",
+  "value": null
+}
+
+### Heading #############################################################################
+
+POST {{proto}}://{{hostname}}:{{httpadapterport}}/telemetry
+Content-Type: application/json
+Authorization: Basic {{honodevice}}@{{honotenant}}:{{honodevicepwd}}
+
+{
+  "topic": "{{org}}/{{honodevice}}/things/twin/commands/modify",
+  "headers": {},
+  "path": "/features/telemetry/properties/heading/value",
+  "value": null
+}
+
+### Bank ###############################################################################
+
+POST {{proto}}://{{hostname}}:{{httpadapterport}}/telemetry
+Content-Type: application/json
+Authorization: Basic {{honodevice}}@{{honotenant}}:{{honodevicepwd}}
+
+{
+  "topic": "{{org}}/{{honodevice}}/things/twin/commands/modify",
+  "headers": {},
+  "path": "/features/telemetry/properties/bank/value",
+  "value": null
+}
+
+### INFLIGHT ###########################################################################
+### Altitude ###########################################################################
+
+POST {{proto}}://{{hostname}}:{{httpadapterport}}/telemetry
+Content-Type: application/json
+Authorization: Basic {{honodevice}}@{{honotenant}}:{{honodevicepwd}}
+
+{
+  "topic": "{{org}}/{{honodevice}}/things/twin/commands/modify",
+  "headers": {},
+  "path": "/features/telemetry/properties/altitude/value",
+  "value": 3000
+}
+
+### Speed ##############################################################################
+
+POST {{proto}}://{{hostname}}:{{httpadapterport}}/telemetry
+Content-Type: application/json
+Authorization: Basic {{honodevice}}@{{honotenant}}:{{honodevicepwd}}
+
+{
+  "topic": "{{org}}/{{honodevice}}/things/twin/commands/modify",
+  "headers": {},
+  "path": "/features/telemetry/properties/speed/value",
+  "value": 185
+}
+
+### Heading #############################################################################
+
+POST {{proto}}://{{hostname}}:{{httpadapterport}}/telemetry
+Content-Type: application/json
+Authorization: Basic {{honodevice}}@{{honotenant}}:{{honodevicepwd}}
+
+{
+  "topic": "{{org}}/{{honodevice}}/things/twin/commands/modify",
+  "headers": {},
+  "path": "/features/telemetry/properties/heading/value",
+  "value": 245
+}
+
+### Bank ###############################################################################
+
+POST {{proto}}://{{hostname}}:{{httpadapterport}}/telemetry
+Content-Type: application/json
+Authorization: Basic {{honodevice}}@{{honotenant}}:{{honodevicepwd}}
+
+{
+  "topic": "{{org}}/{{honodevice}}/things/twin/commands/modify",
+  "headers": {},
+  "path": "/features/telemetry/properties/bank/value",
+  "value": 15
+}
+
+
+
+##### MQTT:
+
+{
+  "topic": "{{org}}/{{honodevice}}/things/twin/commands/modify",
+  "headers": {},
+  "path": "/features/instrumentStatus/properties/inFlight/value",
+  "value": false
+}

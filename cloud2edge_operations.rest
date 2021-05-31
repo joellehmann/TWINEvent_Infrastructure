@@ -14,10 +14,86 @@
 @dittodevopspwd = foobar
 
 ########################################################################################
+### SETUP A COMMON POLICY ##############################################################
 ########################################################################################
-### HONO STUFF #########################################################################
+
+### CURL ###############################################################################
+
+curl -i -X PUT -u ditto:ditto -H 'Content-Type: application/json' --data '{
+  "entries": {
+    "DEFAULT": {
+      "subjects": {
+        "{{ request:subjectId }}": {
+           "type": "Ditto user authenticated via nginx"
+        }
+      },
+      "resources": {
+        "thing:/": {
+          "grant": ["READ", "WRITE"],
+          "revoke": []
+        },
+        "policy:/": {
+          "grant": ["READ", "WRITE"],
+          "revoke": []
+        },
+        "message:/": {
+          "grant": ["READ", "WRITE"],
+          "revoke": []
+        }
+      }
+    },
+    "HONO": {
+      "subjects": {
+        "pre-authenticated:hono-connection": {
+          "type": "Connection to Eclipse Hono"
+        }
+      },
+      "resources": {
+        "thing:/": {
+          "grant": ["READ", "WRITE"],
+          "revoke": []
+        },
+        "message:/": {
+          "grant": ["READ", "WRITE"],
+          "revoke": []
+        }
+      }
+    }
+  }
+}' http://{{hostname}}:{{dittoport}}/api/2/policies/test:testdevice
+
 ########################################################################################
+### DELETE THE TWIN ####################################################################
 ########################################################################################
+
+DELETE {{proto}}://{{hostname}}:{{dittoport}}/api/2/things/test:testdevice
+Authorization: Basic ditto:ditto
+
+########################################################################################
+### CREATE THE TWIN ####################################################################
+########################################################################################
+
+### CURL ###############################################################################
+
+curl -X PUT -u ditto:ditto -H 'Content-Type: application/json' --data '{
+  "policyId": "test:testdevice",
+  "attributes": {
+    "location": "Germany"
+  },
+  "features": {
+    "temperature": {
+      "properties": {
+        "value": null
+      }
+    },
+    "humidity": {
+      "properties": {
+        "value": null
+      }
+    }
+  }
+}' {{proto}}://{{hostname}}:{{dittoport}}/api/2/things/test:testdevice
+
 
 ########################################################################################
 ### PUBLISH TELEMETRY TO HONO ##########################################################
@@ -31,7 +107,46 @@ Authorization: Basic testdevice@test:test
 {
   "topic": "test/testdevice/things/twin/commands/modify",
   "headers": {},
-  "path": "/features/temper/properties/value",
+  "path": "/features/temperature/properties/value",
+  "value": 999
+}
+
+
+########################################################################################
+### PUBLISH TELEMETRY TO HONO ##########################################################
+### Device and Tenant have to be provisioned previously ################################
+########################################################################################
+
+POST {{proto}}://{{hostname}}:{{httpadapterport}}/telemetry
+Content-Type: application/json
+Authorization: Basic demo-device@org.eclipse.packages.c2e:demo-secret
+
+{
+  "topic": "org.eclipse.packages.c2e/demo-device/things/twin/commands/modify",
+  "headers": {},
+  "path": "/features/humidity/properties/value",
+  "value": 999
+}
+
+########################################################################################
+########################################################################################
+### HONO STUFF #########################################################################
+########################################################################################
+########################################################################################
+
+########################################################################################
+### PUBLISH TELEMETRY TO HONO ##########################################################
+### Device and Tenant have to be provisioned previously ################################
+########################################################################################
+
+POST {{proto}}://{{hostname}}:{{httpadapterport}}/telemetry
+Content-Type: application/json
+Authorization: Basic {{honodevice}}@{{honotenant}}:{{honodevicepwd}}
+
+{
+  "topic": "{{honotenant}}/{{honodevice}}/things/twin/commands/modify",
+  "headers": {},
+  "path": "/features/altitude/properties/value",
   "value": "666"
 }
 

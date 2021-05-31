@@ -1,9 +1,9 @@
 @proto = http
 @hostname = 141.19.44.65 
 @user = ditto
-@honodevice = testdevice
-@honotenant = org.eclipse.packages.c2e
-@honodevicepwd = demo-secret
+@honodevice = aircraft
+@honotenant = joel
+@honodevicepwd = flugzeug
 @pwd = ditto
 @port = 38080 
 @httpadapterport = 18080
@@ -123,7 +123,7 @@ Authorization: Basic {{dittodevopsusr}}:{{dittodevopspwd}}
 ### Tenant, Device and Credentials have to be provisioned previously in HONO ###########
 ########################################################################################
 
-POST {{proto}}://{{hostname}}:{{dittoport}}/devops/piggyback/connectivity
+POST {{proto}}://{{hostname}}:{{dittoport}}/devops/piggyback/connectivity?timeout=8s
 Content-Type: application/json
 Authorization: Basic {{dittodevopsusr}}:{{dittodevopspwd}}
 
@@ -349,7 +349,7 @@ curl -i -X POST -u {{dittodevopsusr}}:{{dittodevopspwd}} -H 'Content-Type: appli
       ]
     }
   }
-}' {{proto}}://{{hostname}}:{{dittoport}}/devops/piggyback/connectivity
+}' {{proto}}://{{hostname}}:{{dittoport}}/devops/piggyback/connectivity?timeout=8s
 
 
 
@@ -395,7 +395,7 @@ Authorization: Basic {{dittodevopsusr}}:{{dittodevopspwd}}
   },
   "piggybackCommand": {
     "type": "connectivity.commands:retrieveConnectionStatus",
-    "connectionId": "hono-connection-for-test"
+    "connectionId": "hono-connection-for-joel"
   }
 }
 
@@ -414,7 +414,7 @@ Authorization: Basic {{dittodevopsusr}}:{{dittodevopspwd}}
   },
   "piggybackCommand": {
     "type": "connectivity.commands:retrieveConnectionMetrics",
-    "connectionId": "hono-connection-for-test"
+    "connectionId": "hono-connection-for-joel"
   }
 }
 

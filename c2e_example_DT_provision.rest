@@ -1,0 +1,256 @@
+@proto = http
+@hostname = 141.19.44.65 
+@user = ditto
+@honodevice = aircraft
+@honotenant = joel
+@honodevicepwd = flugzeug
+@pwd = ditto
+@port = 38080 
+@httpadapterport = 18080
+@devregport = 28080
+@dittoport = 38080
+@dittodevopsusr = devops
+@dittodevopspwd = foobar
+
+########################################################################################
+### Create Tenant ######################################################################
+########################################################################################
+
+curl -i -X POST http://{{hostname}}:{{devregport}}/v1/tenants/my-tenant
+
+########################################################################################
+### Register Device ####################################################################
+########################################################################################
+
+curl -i -X POST http://{{hostname}}:{{devregport}}/v1/devices/my-tenant/org.acme:my-device-1
+
+########################################################################################
+### Set Device Credentials #############################################################
+########################################################################################
+
+curl -i -X PUT -H "Content-Type: application/json" --data '[
+{
+  "type": "hashed-password",
+  "auth-id": "my-auth-id-1",
+  "secrets": [{
+    "pwd-plain": "my-password"
+  }]
+}]' http://{{hostname}}:{{devregport}}/v1/credentials/my-tenant/org.acme:my-device-1
+
+########################################################################################
+### Create Connection ##################################################################
+########################################################################################
+
+curl -i -X POST -u devops:foobar -H 'Content-Type: application/json' --data '{
+  "targetActorSelection": "/system/sharding/connection",
+  "headers": {
+    "aggregate": false
+  },
+  "piggybackCommand": {
+    "type": "connectivity.commands:createConnection",
+    "connection": {
+      "id": "hono-connection-for-'"my-tenant"'",
+      "connectionType": "amqp-10",
+      "connectionStatus": "open",
+      "uri": "amqp://consumer%40HONO:verysecret@'"c2e"'-dispatch-router-ext:15672",
+      "failoverEnabled": true,
+      "sources": [
+        {
+          "addresses": [
+            "telemetry/'"my-tenant"'",
+            "event/'"my-tenant"'"
+          ],
+          "authorizationContext": [
+            "pre-authenticated:hono-connection"
+          ],
+          "enforcement": {
+            "input": "{{ header:device_id }}",
+            "filters": [
+              "{{ entity:id }}"
+            ]
+          },
+          "headerMapping": {
+            "hono-device-id": "{{ header:device_id }}",
+            "content-type": "{{ header:content-type }}"
+          },
+          "replyTarget": {
+            "enabled": true,
+            "address": "{{ header:reply-to }}",
+            "headerMapping": {
+              "to": "command/'"my-tenant"'/{{ header:hono-device-id }}",
+              "subject": "{{ header:subject | fn:default(topic:action-subject) | fn:default(topic:criterion) }}-response",
+              "correlation-id": "{{ header:correlation-id }}",
+              "content-type": "{{ header:content-type | fn:default('"'"'application/vnd.eclipse.ditto+json'"'"') }}"
+            },
+            "expectedResponseTypes": [
+              "response",
+              "error"
+            ]
+          },
+          "acknowledgementRequests": {
+            "includes": [],
+            "filter": "fn:filter(header:qos,'"'"'ne'"'"','"'"'0'"'"')"
+          }
+        },
+        {
+          "addresses": [
+            "command_response/'"my-tenant"'/replies"
+          ],
+          "authorizationContext": [
+            "pre-authenticated:hono-connection"
+          ],
+          "headerMapping": {
+            "content-type": "{{ header:content-type }}",
+            "correlation-id": "{{ header:correlation-id }}",
+            "status": "{{ header:status }}"
+          },
+          "replyTarget": {
+            "enabled": false,
+            "expectedResponseTypes": [
+              "response",
+              "error"
+            ]
+          }
+        }
+      ],
+      "targets": [
+        {
+          "address": "command/'"my-tenant"'",
+          "authorizationContext": [
+            "pre-authenticated:hono-connection"
+          ],
+          "topics": [
+            "_/_/things/live/commands",
+            "_/_/things/live/messages"
+          ],
+          "headerMapping": {
+            "to": "command/'"my-tenant"'/{{ thing:id }}",
+            "subject": "{{ header:subject | fn:default(topic:action-subject) }}",
+            "content-type": "{{ header:content-type | fn:default('"'"'application/vnd.eclipse.ditto+json'"'"') }}",
+            "correlation-id": "{{ header:correlation-id }}",
+            "reply-to": "{{ fn:default('"'"'command_response/'"my-tenant"'/replies'"'"') | fn:filter(header:response-required,'"'"'ne'"'"','"'"'false'"'"') }}"
+          }
+        },
+        {
+          "address": "command/'"my-tenant"'",
+          "authorizationContext": [
+            "pre-authenticated:hono-connection"
+          ],
+          "topics": [
+            "_/_/things/twin/events",
+            "_/_/things/live/events"
+          ],
+          "headerMapping": {
+            "to": "command/'"my-tenant"'/{{ thing:id }}",
+            "subject": "{{ header:subject | fn:default(topic:action-subject) }}",
+            "content-type": "{{ header:content-type | fn:default('"'"'application/vnd.eclipse.ditto+json'"'"') }}",
+            "correlation-id": "{{ header:correlation-id }}"
+          }
+        }
+      ]
+    }
+  }
+}' http://{{hostname}}:{{dittoport}}/devops/piggyback/connectivity
+
+########################################################################################
+### Setup policy #######################################################################
+########################################################################################
+
+curl -i -X PUT -u ditto:ditto -H 'Content-Type: application/json' --data '{
+  "entries": {
+    "DEFAULT": {
+      "subjects": {
+        "{{ request:subjectId }}": {
+           "type": "Ditto user authenticated via nginx"
+        }
+      },
+      "resources": {
+        "thing:/": {
+          "grant": ["READ", "WRITE"],
+          "revoke": []
+        },
+        "policy:/": {
+          "grant": ["READ", "WRITE"],
+          "revoke": []
+        },
+        "message:/": {
+          "grant": ["READ", "WRITE"],
+          "revoke": []
+        }
+      }
+    },
+    "HONO": {
+      "subjects": {
+        "pre-authenticated:hono-connection": {
+          "type": "Connection to Eclipse Hono"
+        }
+      },
+      "resources": {
+        "thing:/": {
+          "grant": ["READ", "WRITE"],
+          "revoke": []
+        },
+        "message:/": {
+          "grant": ["READ", "WRITE"],
+          "revoke": []
+        }
+      }
+    }
+  }
+}' http://{{hostname}}:{{dittoport}}/api/2/policies/org.acme:my-policy
+
+########################################################################################
+### Create a twin ######################################################################
+########################################################################################
+
+curl -X PUT -u ditto:ditto -H 'Content-Type: application/json' --data '{
+  "policyId": "org.acme:my-policy",
+  "attributes": {
+    "location": "Germany"
+  },
+  "features": {
+    "temperature": {
+      "properties": {
+        "value": null
+      }
+    },
+    "humidity": {
+      "properties": {
+        "value": null
+      }
+    }
+  }
+}' http://{{hostname}}:{{dittoport}}/api/2/things/org.acme:my-device-1
+
+########################################################################################
+### PUBLISH TELEMETRY TO HONO ##########################################################
+### Device and Tenant have to be provisioned previously ################################
+########################################################################################
+
+POST {{proto}}://{{hostname}}:{{httpadapterport}}/telemetry
+Content-Type: application/json
+Authorization: Basic my-auth-id-1@my-tenant:my-password
+
+{
+  "topic": "org.acme/my-device-1/things/twin/commands/modify",
+  "headers": {},
+  "path": "/features/temperature/properties/value",
+  "value": 999
+}
+
+
+########################################################################################
+### PUBLISH TELEMETRY TO HONO ##########################################################
+### Device and Tenant have to be provisioned previously ################################
+########################################################################################
+
+POST {{proto}}://{{hostname}}:{{httpadapterport}}/telemetry
+Content-Type: application/json
+Authorization: Basic demo-device@org.eclipse.packages.c2e:demo-secret
+
+{
+  "topic": "org.eclipse.packages.c2e/demo-device/things/twin/commands/modify",
+  "headers": {},
+  "path": "/features/humidity/properties/value",
+  "value": 999
+}
