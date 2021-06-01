@@ -472,8 +472,8 @@ Authorization: Basic {{honodevice}}@{{honotenant}}:{{honodevicepwd}}
 ##### MQTT:
 
 {
-  "topic": "{{org}}/{{honodevice}}/things/twin/commands/modify",
+  "topic": "org.fournier/rf4/things/twin/commands/modify",
   "headers": {},
   "path": "/features/instrumentStatus/properties/inFlight/value",
-  "value": false
+  "value": true
 }
